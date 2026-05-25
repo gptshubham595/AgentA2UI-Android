@@ -6,6 +6,17 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+fun gradleOrEnv(name: String, fallback: String = ""): String {
+    return providers.gradleProperty(name)
+        .orElse(providers.environmentVariable(name))
+        .orElse(fallback)
+        .get()
+}
+
+fun buildConfigString(value: String): String {
+    return "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+}
+
 android {
     namespace = "com.shubham.agentui"
     compileSdk {
@@ -17,11 +28,36 @@ android {
     defaultConfig {
         applicationId = "com.shubham.agentui"
         minSdk = 24
-        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField(
+            "boolean",
+            "A2UI_USE_OCI_AGENT",
+            gradleOrEnv("A2UI_USE_OCI_AGENT", "false").toBooleanStrictOrNull()?.toString() ?: "false"
+        )
+        buildConfigField(
+            "String",
+            "A2UI_OCI_OPENAI_API_KEY",
+            buildConfigString(gradleOrEnv("A2UI_OCI_OPENAI_API_KEY"))
+        )
+        buildConfigField(
+            "String",
+            "A2UI_OCI_LITELLM_BASE_URL",
+            buildConfigString(
+                gradleOrEnv(
+                    "A2UI_OCI_LITELLM_BASE_URL",
+                    "https://code-internal.aiservice.us-chicago-1.oci.oraclecloud.com/20250206/app/litellm"
+                )
+            )
+        )
+        buildConfigField(
+            "String",
+            "A2UI_OCI_LITELLM_MODEL",
+            buildConfigString(gradleOrEnv("A2UI_OCI_LITELLM_MODEL", "gpt-5.5"))
+        )
     }
 
 
@@ -42,7 +78,7 @@ android {
     buildFeatures {
         compose = true
         aidl = false
-        buildConfig = false
+        buildConfig = true
         shaders = false
     }
 

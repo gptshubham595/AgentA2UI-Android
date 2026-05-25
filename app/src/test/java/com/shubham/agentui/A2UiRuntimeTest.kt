@@ -112,7 +112,7 @@ class A2UiRuntimeTest {
             "Text" to setOf("id", "component", "text", "variant", "weight"),
             "TextField" to setOf("id", "component", "label", "value", "variant", "checks", "validationRegexp", "weight"),
             "Button" to setOf("id", "component", "child", "variant", "action", "checks", "weight"),
-            "CheckBox" to setOf("id", "component", "label", "value", "checks", "weight"),
+            "CheckBox" to setOf("id", "component", "label", "value", "action", "checks", "weight"),
             "List" to setOf("id", "component", "children", "direction", "align", "weight")
         )
 

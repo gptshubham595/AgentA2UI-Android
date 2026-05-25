@@ -6,10 +6,10 @@ This project is set up as a native Android proof of the A2UI pattern: an agent s
 
 - A2UI protocol: `v0.9`
 - Catalog: `https://a2ui.org/specification/v0_9/catalogs/basic/catalog.json`
-- Android runtime: local `A2UiRuntime` in `app/src/main/java/com/shubham/agentui/MainActivity.kt`
+- Android runtime: local `A2UiRuntime` in `app/src/main/java/com/shubham/agentui/A2UiRuntime.kt`
 - UI implementation: Jetpack Compose and Material 3
-- Message source today: local `TodoAgent`
-- Message source next: A2UI Composer output, JSONL from an AI agent, WebSocket/SSE, A2A, AG-UI, MCP, or REST polling
+- Message source today: local `DynamicUiAgent` fallback or OCI/LiteLLM through `OciDynamicUiMessageSource`
+- Message source next: A2UI Composer output, WebSocket/SSE, A2A, AG-UI, MCP, or REST polling
 
 ## Runtime Capabilities
 
@@ -48,6 +48,33 @@ This is enough to prove dynamic native UI generation for forms, lists, cards, an
 4. The renderer displays the `root` component using native Compose.
 5. User actions are sent back to the agent with resolved context values.
 6. The agent streams more `updateComponents` or `updateDataModel` messages.
+
+The current app includes a prompt textbox. `DynamicUiMessageSources.create()` chooses the message source:
+
+- Default: `LocalDynamicUiMessageSource` wraps `DynamicUiAgent` and returns deterministic A2UI JSON.
+- Optional: `OciDynamicUiMessageSource` calls the OCI/LiteLLM `/responses` endpoint through Ktor and parses the returned A2UI JSON.
+- Safety: `FallbackDynamicUiMessageSource` falls back to local JSON if the OCI request fails.
+
+The temporary Python OCI scripts are useful for checking credentials and model access, but Android now has a native client for the same endpoint.
+
+## Demo Modes
+
+- **Playground**: prompt text goes to the selected message source, which returns A2UI JSON messages. Android renders the JSON immediately.
+- **Flights JSON**: the sample flight payload is treated as received runtime data and converted into flight cards.
+- **Todo App**: `TodoAgent` emits a dynamic A2UI todo surface and handles add, toggle, remove, and clear-completed actions.
+
+## Gradle Properties / BuildConfig
+
+The app reads OCI settings from Gradle properties or environment variables and exposes them through `BuildConfig`:
+
+```properties
+A2UI_USE_OCI_AGENT=true
+A2UI_OCI_OPENAI_API_KEY=your_oci_openai_bearer_token
+A2UI_OCI_LITELLM_BASE_URL=https://code-internal.aiservice.us-chicago-1.oci.oraclecloud.com/20250206/app/litellm
+A2UI_OCI_LITELLM_MODEL=gpt-5.5
+```
+
+For committed code, keep `A2UI_USE_OCI_AGENT=false` and the key empty. Put real keys in `~/.gradle/gradle.properties`, local environment variables, or a production secrets system.
 
 ## Using A2UI Composer
 
