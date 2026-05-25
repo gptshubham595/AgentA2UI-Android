@@ -17,11 +17,13 @@ internal class DynamicUiAgent(
     private val receivedFlightsJson: String = ReceivedFlightsJson
 ) {
     fun generate(prompt: String): List<String> {
-        val request = prompt.ifBlank { "show flight options from received JSON" }
+        val isTemporary = prompt.isBlank()
+        val request = prompt.ifBlank { "Temporary UI" }
         val spec = when {
+            request.looksLikeShapeRequest() -> shapeSpec(request)
             request.contains("flight", ignoreCase = true) -> flightSpec(request)
             request.contains("form", ignoreCase = true) || request.contains("input", ignoreCase = true) -> formSpec(request)
-            else -> cardSpec(request)
+            else -> cardSpec(request, isTemporary)
         }
 
         return listOf(
@@ -81,13 +83,40 @@ internal class DynamicUiAgent(
         return UiSpec(data = data, components = formComponents())
     }
 
-    private fun cardSpec(prompt: String): UiSpec {
+    private fun shapeSpec(prompt: String): UiSpec {
+        val data = buildJsonObject {
+            put("prompt", prompt)
+            putJsonObject("art") {
+                put("backgroundColor", "#D32F2F")
+                put("rectangleColor", "#FFFFFF")
+                put("circleColor", "#FFD54F")
+                put("textColor", "#111111")
+                put("label", "HI")
+            }
+            putJsonObject("agent") {
+                put("name", "Dynamic UI Agent")
+                put("status", "Generated a native color-and-shape layout from your request.")
+                put("summary", "Shape layout")
+            }
+        }
+
+        return UiSpec(data = data, components = shapeComponents())
+    }
+
+    private fun cardSpec(prompt: String, isTemporary: Boolean): UiSpec {
         val data = buildJsonObject {
             put("prompt", prompt)
             putJsonObject("agent") {
                 put("name", "Dynamic UI Agent")
-                put("status", "Generated a native summary card from your prompt.")
-                put("summary", "Prompt preview")
+                put(
+                    "status",
+                    if (isTemporary) {
+                        "Generated a temporary native UI from empty playground input."
+                    } else {
+                        "Generated a native summary card from your prompt."
+                    }
+                )
+                put("summary", if (isTemporary) "Temporary UI" else "Prompt preview")
             }
         }
 
@@ -127,6 +156,45 @@ private data class UiSpec(
     val data: JsonObject,
     val components: List<JsonObject>
 )
+
+private fun String.looksLikeShapeRequest(): Boolean {
+    val hasBackground = contains("background", ignoreCase = true)
+    val hasRectangle = contains("rectangle", ignoreCase = true)
+    val hasCircle = contains("circle", ignoreCase = true)
+    val hasColor = contains("color", ignoreCase = true) || contains("colour", ignoreCase = true)
+    return hasCircle && hasRectangle || hasBackground && hasColor
+}
+
+private fun shapeComponents(): List<JsonObject> {
+    return listOf(
+        component(
+            "root",
+            "Box",
+            "backgroundColor" to path("/art/backgroundColor"),
+            "heightDp" to JsonPrimitive(360),
+            "paddingDp" to JsonPrimitive(24),
+            "contentAlignment" to JsonPrimitive("center"),
+            "child" to JsonPrimitive("white_rectangle")
+        ),
+        component(
+            "white_rectangle",
+            "Box",
+            "backgroundColor" to path("/art/rectangleColor"),
+            "heightDp" to JsonPrimitive(180),
+            "cornerRadiusDp" to JsonPrimitive(0),
+            "contentAlignment" to JsonPrimitive("center"),
+            "child" to JsonPrimitive("yellow_circle")
+        ),
+        component(
+            "yellow_circle",
+            "Circle",
+            "color" to path("/art/circleColor"),
+            "textColor" to path("/art/textColor"),
+            "text" to path("/art/label"),
+            "sizeDp" to JsonPrimitive(96)
+        )
+    )
+}
 
 private fun flightComponents(): List<JsonObject> {
     return listOf(

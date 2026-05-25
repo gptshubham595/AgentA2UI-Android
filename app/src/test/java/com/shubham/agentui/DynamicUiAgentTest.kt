@@ -69,6 +69,24 @@ class DynamicUiAgentTest {
     }
 
     @Test
+    fun colorShapePromptGeneratesNativeShapeComponents() {
+        val runtime = A2UiRuntime()
+        runtime.processMessages(
+            DynamicUiAgent().generate(
+                "background red colour with white rectangle and yellow circle in mid and write HI"
+            )
+        )
+
+        assertEquals("#D32F2F", runtime.dataSnapshot(DynamicSurfaceId).pathString("/art/backgroundColor"))
+        assertEquals("#FFFFFF", runtime.dataSnapshot(DynamicSurfaceId).pathString("/art/rectangleColor"))
+        assertEquals("#FFD54F", runtime.dataSnapshot(DynamicSurfaceId).pathString("/art/circleColor"))
+        assertEquals("HI", runtime.dataSnapshot(DynamicSurfaceId).pathString("/art/label"))
+        assertEquals("Box", runtime.component(DynamicSurfaceId, "root")!!.getValue("component").jsonPrimitive.content)
+        assertEquals("Box", runtime.component(DynamicSurfaceId, "white_rectangle")!!.getValue("component").jsonPrimitive.content)
+        assertEquals("Circle", runtime.component(DynamicSurfaceId, "yellow_circle")!!.getValue("component").jsonPrimitive.content)
+    }
+
+    @Test
     fun fallbackPromptGeneratesSummaryCardAndKeepsPrompt() {
         val prompt = "make a card for launch readiness"
         val runtime = A2UiRuntime()
@@ -81,8 +99,25 @@ class DynamicUiAgentTest {
     }
 
     @Test
+    fun emptyPromptGeneratesTemporaryUi() {
+        val runtime = A2UiRuntime()
+
+        runtime.processMessages(DynamicUiAgent().generate(""))
+
+        assertEquals("Temporary UI", runtime.dataSnapshot(DynamicSurfaceId).pathString("/agent/summary"))
+        assertTrue(runtime.dataSnapshot(DynamicSurfaceId).pathString("/agent/status").contains("temporary"))
+        assertNotNull(runtime.component(DynamicSurfaceId, "summary_card"))
+    }
+
+    @Test
     fun generatedComponentsStayWithinSupportedBasicCatalogSubset() {
-        val prompts = listOf("flights", "registration form", "plain summary card")
+        val prompts = listOf(
+            "",
+            "flights",
+            "registration form",
+            "plain summary card",
+            "background red colour with white rectangle and yellow circle in mid and write HI"
+        )
         prompts.forEach { prompt ->
             val components = DynamicUiAgent()
                 .generate(prompt)
@@ -111,6 +146,37 @@ class DynamicUiAgentTest {
     }
 
     private val allowedComponentKeys = mapOf(
+        "Box" to setOf(
+            "id",
+            "component",
+            "child",
+            "children",
+            "backgroundColor",
+            "containerColor",
+            "contentColor",
+            "textColor",
+            "widthDp",
+            "heightDp",
+            "minHeightDp",
+            "paddingDp",
+            "cornerRadiusDp",
+            "contentAlignment",
+            "align",
+            "weight"
+        ),
+        "Circle" to setOf(
+            "id",
+            "component",
+            "text",
+            "child",
+            "color",
+            "backgroundColor",
+            "contentColor",
+            "textColor",
+            "sizeDp",
+            "paddingDp",
+            "weight"
+        ),
         "Column" to setOf("id", "component", "children", "justify", "align", "weight"),
         "Row" to setOf("id", "component", "children", "justify", "align", "weight"),
         "Card" to setOf("id", "component", "child", "weight"),

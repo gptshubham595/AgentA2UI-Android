@@ -5,6 +5,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -51,6 +52,57 @@ class A2UiRuntimeTest {
     }
 
     @Test
+    fun inlineChildrenFromAiAreFlattenedIntoRenderableComponentIds() {
+        val runtime = A2UiRuntime()
+        val surfaceId = "ai_surface"
+
+        runtime.processMessages(
+            listOf(
+                A2UiMessages.createSurface(surfaceId),
+                A2UiMessages.updateComponents(
+                    surfaceId,
+                    listOf(
+                        testComponent(
+                            "root",
+                            "Column",
+                            "children" to buildJsonArray {
+                                add(testComponent("title", "Text", "text" to JsonPrimitive("Top players")))
+                                add(
+                                    testComponent(
+                                        "leaderboard_card",
+                                        "Card",
+                                        "child" to testComponent(
+                                            "leaderboard_body",
+                                            "Column",
+                                            "children" to children("row_1")
+                                        )
+                                    )
+                                )
+                            }
+                        ),
+                        testComponent("row_1", "Text", "text" to JsonPrimitive("Kylian Mbappe - 28"))
+                    )
+                )
+            )
+        )
+
+        val rootChildren = runtime.component(surfaceId, "root")!!
+            .getValue("children")
+            .jsonArray
+            .map { it.jsonPrimitive.content }
+
+        assertEquals(listOf("title", "leaderboard_card"), rootChildren)
+        assertNotNull(runtime.component(surfaceId, "title"))
+        assertNotNull(runtime.component(surfaceId, "leaderboard_body"))
+        assertEquals("row_1", runtime.component(surfaceId, "leaderboard_body")!!
+            .getValue("children")
+            .jsonArray
+            .single()
+            .jsonPrimitive
+            .content)
+    }
+
+    @Test
     fun missingDataModelValueDeletesExistingPath() {
         val runtime = A2UiRuntime()
         val surfaceId = "ai_surface"
@@ -76,6 +128,59 @@ class A2UiRuntimeTest {
     }
 
     @Test
+    fun formatDateCallResolvesPathArguments() {
+        val runtime = A2UiRuntime()
+        val surfaceId = "ai_surface"
+
+        runtime.processMessages(
+            listOf(
+                A2UiMessages.createSurface(surfaceId),
+                A2UiMessages.updateDataModel(
+                    surfaceId,
+                    "/",
+                    buildJsonObject {
+                        put("timestamp", "2025-12-15T10:32:00Z")
+                    }
+                )
+            )
+        )
+
+        val result = runtime.resolveText(
+            surfaceId = surfaceId,
+            value = buildJsonObject {
+                put("call", "formatDate")
+                putJsonObject("args") {
+                    putJsonObject("value") {
+                        put("path", "/timestamp")
+                    }
+                    put("format", "yyyy")
+                }
+                put("returnType", "string")
+            },
+            scopePath = null
+        )
+
+        assertEquals("2025", result)
+    }
+
+    @Test
+    fun primitiveHelpersIgnoreDynamicObjectsInsteadOfThrowing() {
+        val payload = buildJsonObject {
+            putJsonObject("metric") {
+                putJsonObject("trend") {
+                    put("path", "/kpis/revenue/trend")
+                }
+                put("score", "42")
+            }
+        }
+        val metric = payload.getValue("metric").jsonObject
+
+        assertNull(metric.string("trend"))
+        assertEquals("", payload.pathString("/metric/trend"))
+        assertEquals("42", payload.pathString("/metric/score"))
+    }
+
+    @Test
     fun deleteSurfaceRemovesSurfaceAndDataModel() {
         val runtime = A2UiRuntime()
         val surfaceId = "ai_surface"
@@ -95,8 +200,8 @@ class A2UiRuntimeTest {
 
     @Test
     fun bootstrapComponentsStayWithinSupportedBasicCatalogSubset() {
-        val components = TodoAgent()
-            .bootstrapMessages()
+        val components = DynamicUiAgent()
+            .generate("plain summary card")
             .map { json.parseToJsonElement(it).jsonObject }
             .first { "updateComponents" in it }
             .getValue("updateComponents")

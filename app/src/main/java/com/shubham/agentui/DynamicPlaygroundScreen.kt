@@ -35,20 +35,15 @@ import kotlinx.coroutines.launch
 internal fun DynamicA2UiApp() {
     val runtime = remember { A2UiRuntime() }
     val dynamicAgent = remember { DynamicUiAgent() }
-    val todoAgent = remember { TodoAgent() }
     val messageSource = remember { DynamicUiMessageSources.create() }
     val scope = rememberCoroutineScope()
     var mode by rememberSaveable { mutableStateOf(A2UiDemoMode.Playground) }
-    var prompt by rememberSaveable { mutableStateOf("Show flight options from received JSON") }
-    var liveMode by rememberSaveable { mutableStateOf(!BuildConfig.A2UI_USE_OCI_AGENT) }
+    var prompt by rememberSaveable { mutableStateOf("") }
+    var liveMode by rememberSaveable { mutableStateOf(true) }
     var isGenerating by rememberSaveable { mutableStateOf(false) }
     var status by rememberSaveable { mutableStateOf(messageSource.sourceLabel) }
     var warning by rememberSaveable { mutableStateOf<String?>(null) }
     var generationId by remember { mutableIntStateOf(0) }
-    val activeSurfaceId = when (mode) {
-        A2UiDemoMode.Todo -> TodoSurfaceId
-        else -> DynamicSurfaceId
-    }
 
     suspend fun generatePlayground(requestPrompt: String) {
         val requestId = ++generationId
@@ -84,22 +79,9 @@ internal fun DynamicA2UiApp() {
         runtime.processMessages(dynamicAgent.generate("Show flight options from received JSON"))
     }
 
-    fun renderTodoDemo() {
-        generationId++
-        isGenerating = false
-        warning = null
-        status = "Todo Agent -> A2UI native controls"
-        runtime.processMessages(todoAgent.bootstrapMessages())
-    }
-
-    LaunchedEffect(runtime, dynamicAgent, todoAgent) {
+    LaunchedEffect(runtime, dynamicAgent) {
         runtime.actionHandler = { action ->
-            val messages = when (action.surfaceId) {
-                TodoSurfaceId -> todoAgent.handle(action, runtime.dataSnapshot(TodoSurfaceId))
-                DynamicSurfaceId -> dynamicAgent.handle(action, runtime.dataSnapshot(DynamicSurfaceId))
-                else -> emptyList()
-            }
-            runtime.processMessages(messages)
+            runtime.processMessages(dynamicAgent.handle(action, runtime.dataSnapshot(DynamicSurfaceId)))
         }
     }
 
@@ -117,7 +99,6 @@ internal fun DynamicA2UiApp() {
             }
 
             A2UiDemoMode.Flights -> renderFlightsDemo()
-            A2UiDemoMode.Todo -> renderTodoDemo()
         }
     }
 
@@ -144,14 +125,13 @@ internal fun DynamicA2UiApp() {
                     when (mode) {
                         A2UiDemoMode.Playground -> scope.launch { generatePlayground(prompt) }
                         A2UiDemoMode.Flights -> renderFlightsDemo()
-                        A2UiDemoMode.Todo -> renderTodoDemo()
                     }
                 }
             )
 
             A2UiSurface(
                 runtime = runtime,
-                surfaceId = activeSurfaceId,
+                surfaceId = DynamicSurfaceId,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
@@ -167,8 +147,7 @@ internal fun DynamicA2UiApp() {
 
 private enum class A2UiDemoMode(val title: String) {
     Playground("Playground"),
-    Flights("Flights JSON"),
-    Todo("Todo App")
+    Flights("Flights JSON")
 }
 
 @Composable
@@ -204,6 +183,7 @@ private fun DemoControls(
                 onValueChange = onPromptChange,
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Prompt") },
+                placeholder = { Text("create a leaderboard for football players") },
                 minLines = 2
             )
         }
@@ -279,7 +259,6 @@ private fun buttonLabel(mode: A2UiDemoMode, isGenerating: Boolean): String {
     return when (mode) {
         A2UiDemoMode.Playground -> "Generate JSON UI"
         A2UiDemoMode.Flights -> "Render flights JSON"
-        A2UiDemoMode.Todo -> "Reset todo UI"
     }
 }
 

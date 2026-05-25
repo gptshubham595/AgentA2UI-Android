@@ -7,8 +7,8 @@ plugins {
 }
 
 fun gradleOrEnv(name: String, fallback: String = ""): String {
-    return providers.gradleProperty(name)
-        .orElse(providers.environmentVariable(name))
+    return providers.environmentVariable(name)
+        .orElse(providers.gradleProperty(name))
         .orElse(fallback)
         .get()
 }
@@ -36,7 +36,7 @@ android {
         buildConfigField(
             "boolean",
             "A2UI_USE_OCI_AGENT",
-            gradleOrEnv("A2UI_USE_OCI_AGENT", "false").toBooleanStrictOrNull()?.toString() ?: "false"
+            gradleOrEnv("A2UI_USE_OCI_AGENT", "true").toBooleanStrictOrNull()?.toString() ?: "true"
         )
         buildConfigField(
             "String",
@@ -113,6 +113,8 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
     // Tooling
     debugImplementation(libs.androidx.compose.ui.tooling)
     // Instrumented tests

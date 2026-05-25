@@ -5,6 +5,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -48,15 +53,14 @@ internal class A2UiRuntime {
                     A2UiSurfaceState(surfaceId = surfaceId, catalogId = "standard")
                 }
                 payload.getValue("components").jsonArray.forEach { item ->
-                    val component = item.jsonObject
-                    surface.components[component.getValue("id").jsonPrimitive.content] = component
+                    surface.registerComponentTree(item.jsonObject)
                 }
             }
 
             "updateDataModel" in envelope -> {
                 val payload = envelope.getValue("updateDataModel").jsonObject
                 val surfaceId = payload.getValue("surfaceId").jsonPrimitive.content
-                val path = payload["path"]?.jsonPrimitive?.content ?: "/"
+                val path = payload["path"]?.primitiveStringOrNull() ?: "/"
                 if ("value" in payload) {
                     updateDataModel(surfaceId, path, payload.getValue("value"))
                 } else {
@@ -95,7 +99,11 @@ internal class A2UiRuntime {
             null -> null
             is JsonObject -> {
                 when {
-                    "path" in value -> resolvePath(surfaceId, value.getValue("path").jsonPrimitive.content, scopePath)
+                    "path" in value -> value["path"]
+                        ?.primitiveStringOrNull()
+                        ?.let { resolvePath(surfaceId, it, scopePath) }
+
+                    "call" in value -> resolveCall(surfaceId, value, scopePath)
                     "literal" in value -> value["literal"]
                     else -> value
                 }
@@ -111,7 +119,7 @@ internal class A2UiRuntime {
 
     fun updateBoundValue(surfaceId: String, binding: JsonElement?, scopePath: String?, value: JsonElement) {
         val bindingObject = binding as? JsonObject ?: return
-        val path = bindingObject["path"]?.jsonPrimitive?.content ?: return
+        val path = bindingObject["path"]?.primitiveStringOrNull() ?: return
         updateDataModel(surfaceId, scopedPath(path, scopePath), value)
     }
 
@@ -132,7 +140,7 @@ internal class A2UiRuntime {
 
     fun dispatchAction(surfaceId: String, action: JsonObject, scopePath: String?) {
         val event = action["event"]?.jsonObject ?: return
-        val name = event["name"]?.jsonPrimitive?.content ?: return
+        val name = event["name"]?.primitiveStringOrNull() ?: return
         val context = event["context"]?.jsonObject.orEmpty().mapValues { (_, value) ->
             resolveValue(surfaceId, value, scopePath) ?: JsonNull
         }
@@ -152,6 +160,26 @@ internal class A2UiRuntime {
             else -> "/$path"
         }
     }
+
+    private fun resolveCall(surfaceId: String, call: JsonObject, scopePath: String?): JsonElement? {
+        return when (call.string("call")) {
+            "formatDate" -> formatDateCall(surfaceId, call, scopePath)
+            else -> null
+        }
+    }
+
+    private fun formatDateCall(surfaceId: String, call: JsonObject, scopePath: String?): JsonElement {
+        val args = call["args"] as? JsonObject ?: return JsonPrimitive("")
+        val rawValue = resolveText(surfaceId, args["value"], scopePath)
+        val format = args.string("format").orEmpty().ifBlank { "h:mm a" }
+        val formatted = runCatching {
+            DateTimeFormatter
+                .ofPattern(format, Locale.US)
+                .withZone(ZoneId.systemDefault())
+                .format(Instant.parse(rawValue))
+        }.getOrElse { rawValue }
+        return JsonPrimitive(formatted)
+    }
 }
 
 internal class A2UiSurfaceState(
@@ -159,6 +187,95 @@ internal class A2UiSurfaceState(
     val catalogId: String
 ) {
     val components = mutableStateMapOf<String, JsonObject>()
+
+    fun registerComponentTree(component: JsonObject, fallbackId: String = "component"): String {
+        val componentId = component.string("id")
+            ?.takeIf { it.isNotBlank() }
+            ?: nextGeneratedId(fallbackId)
+        val normalized = normalizeInlineChildren(component, componentId)
+        components[componentId] = normalized
+        return componentId
+    }
+
+    private fun normalizeInlineChildren(component: JsonObject, componentId: String): JsonObject {
+        val normalized = component.toMutableMap()
+        normalized["id"] = JsonPrimitive(componentId)
+
+        normalized["child"] = normalized["child"]?.let { child ->
+            normalizeSingleChild(componentId, child)
+        } ?: normalized["child"] ?: JsonNull
+
+        if (normalized["child"] == JsonNull && "child" !in component) {
+            normalized.remove("child")
+        }
+
+        normalized["children"] = normalized["children"]?.let { children ->
+            normalizeChildren(componentId, children)
+        } ?: normalized["children"] ?: JsonNull
+
+        if (normalized["children"] == JsonNull && "children" !in component) {
+            normalized.remove("children")
+        }
+
+        return JsonObject(normalized)
+    }
+
+    private fun normalizeSingleChild(parentId: String, child: JsonElement): JsonElement {
+        val childObject = child as? JsonObject ?: return child
+        if (childObject.string("component").isNullOrBlank()) return child
+
+        return JsonPrimitive(registerComponentTree(childObject, "${parentId}_child"))
+    }
+
+    private fun normalizeChildren(parentId: String, children: JsonElement): JsonElement {
+        return when (children) {
+            is JsonArray -> JsonArray(children.mapIndexed { index, child ->
+                normalizeChildEntry(parentId, index, child)
+            })
+
+            is JsonObject -> normalizeChildrenObject(parentId, children)
+            else -> children
+        }
+    }
+
+    private fun normalizeChildrenObject(parentId: String, children: JsonObject): JsonElement {
+        if (!children.string("component").isNullOrBlank()) {
+            return JsonArray(listOf(JsonPrimitive(registerComponentTree(children, "${parentId}_child"))))
+        }
+
+        val normalized = children.toMutableMap()
+        (normalized["array"] as? JsonArray)?.let { array ->
+            normalized["array"] = JsonArray(array.mapIndexed { index, child ->
+                normalizeChildEntry(parentId, index, child)
+            })
+        }
+        (normalized["component"] as? JsonObject)?.let { itemComponent ->
+            normalized.remove("component")
+            normalized["componentId"] = JsonPrimitive(registerComponentTree(itemComponent, "${parentId}_item"))
+        }
+        (normalized["itemComponent"] as? JsonObject)?.let { itemComponent ->
+            normalized.remove("itemComponent")
+            normalized["componentId"] = JsonPrimitive(registerComponentTree(itemComponent, "${parentId}_item"))
+        }
+
+        return JsonObject(normalized)
+    }
+
+    private fun normalizeChildEntry(parentId: String, index: Int, child: JsonElement): JsonElement {
+        val childObject = child as? JsonObject ?: return child
+        if (childObject.string("component").isNullOrBlank()) return child
+
+        return JsonPrimitive(registerComponentTree(childObject, "${parentId}_child_$index"))
+    }
+
+    private fun nextGeneratedId(prefix: String): String {
+        var index = components.size
+        var id = prefix
+        while (id in components) {
+            id = "${prefix}_${index++}"
+        }
+        return id
+    }
 }
 
 internal data class A2UiAction(

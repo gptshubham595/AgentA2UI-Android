@@ -3,9 +3,10 @@ package com.shubham.agentui
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonPrimitive
 
 internal fun getAtPath(root: JsonElement, path: String): JsonElement? {
     if (path == "/") return root
@@ -82,19 +83,27 @@ internal fun pathSegments(path: String): List<String> {
 }
 
 internal fun JsonObject.string(key: String): String? {
-    return this[key]?.jsonPrimitive?.contentOrNull
+    return this[key]?.primitiveStringOrNull()
 }
 
 internal fun JsonObject.pathString(path: String): String {
-    return getAtPath(this, path)?.jsonPrimitive?.contentOrNull.orEmpty()
+    return getAtPath(this, path)?.primitiveStringOrNull().orEmpty()
 }
 
 internal fun Map<String, JsonElement>.string(key: String): String {
-    return this[key]?.jsonPrimitive?.contentOrNull.orEmpty()
+    return this[key]?.primitiveStringOrNull().orEmpty()
 }
 
 internal fun JsonElement.jsonArrayOrNull(): JsonArray? {
     return this as? JsonArray
+}
+
+internal fun JsonElement.primitiveStringOrNull(): String? {
+    return (this as? JsonPrimitive)?.contentOrNull
+}
+
+internal fun JsonElement.primitiveBooleanOrNull(): Boolean? {
+    return (this as? JsonPrimitive)?.booleanOrNull
 }
 
 private fun emptyContainerFor(remainingSegments: List<String>): JsonElement {

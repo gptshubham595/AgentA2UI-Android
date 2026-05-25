@@ -35,8 +35,20 @@ The local runtime is ready for the core A2UI loop:
 - `Button`
 - `CheckBox`
 - `List`
+- `Spacer`
+- `Icon`
+- `Image`
+- `Divider`
+- `Title`
+- `DashboardCard`
+- `Metric`
+- `Badge`
+- `DataTable`
+- `PieChart`
+- `BarChart`
+- `FlightCard`
 
-The renderer also has small local affordances, but Composer/agent output should stay within the Basic Catalog subset above unless we publish a custom catalog for Android-specific extensions.
+The renderer also has small local affordances, but Composer/agent output should stay within the Android catalog subset above unless we publish a custom catalog for Android-specific extensions.
 
 This is enough to prove dynamic native UI generation for forms, lists, cards, and action flows. It is intentionally smaller than a full production renderer.
 
@@ -59,9 +71,8 @@ The temporary Python OCI scripts are useful for checking credentials and model a
 
 ## Demo Modes
 
-- **Playground**: prompt text goes to the selected message source, which returns A2UI JSON messages. Android renders the JSON immediately.
+- **Playground**: prompt text goes to the selected message source, which returns A2UI JSON messages. Empty input becomes a default temporary-agent prompt and uses the same AI/OCI path when configured.
 - **Flights JSON**: the sample flight payload is treated as received runtime data and converted into flight cards.
-- **Todo App**: `TodoAgent` emits a dynamic A2UI todo surface and handles add, toggle, remove, and clear-completed actions.
 
 ## Gradle Properties / BuildConfig
 
@@ -74,7 +85,7 @@ A2UI_OCI_LITELLM_BASE_URL=https://code-internal.aiservice.us-chicago-1.oci.oracl
 A2UI_OCI_LITELLM_MODEL=gpt-5.5
 ```
 
-For committed code, keep `A2UI_USE_OCI_AGENT=false` and the key empty. Put real keys in `~/.gradle/gradle.properties`, local environment variables, or a production secrets system.
+For committed code, keep the key empty. With a real key, OCI is used by default; set `A2UI_USE_OCI_AGENT=false` only when you want to force the deterministic local generator. Put real keys in `~/.gradle/gradle.properties`, local environment variables, or a production secrets system.
 
 ## Using A2UI Composer
 
